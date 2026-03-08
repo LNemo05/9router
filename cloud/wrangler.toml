@@ -6,12 +6,6 @@ compatibility_flags = ["nodejs_compat"]
 [alias]
 "@/lib/usageDb.js" = "./src/stubs/usageDb.js"
 
-# Step 3: Paste your KV & D1 IDs here
-[[kv_namespaces]]
-binding = "KV"
-id = "YOUR_KV_NAMESPACE_ID"
-
-[[d1_databases]]
-binding = "DB"
-database_name = "proxy-db"
-database_id = "YOUR_D1_DATABASE_ID"
+# The deploy script appends the D1 binding to a generated config file at runtime.
+# This checked-in config stays account-agnostic, so you only need
+# CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID to deploy.
