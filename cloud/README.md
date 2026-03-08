@@ -43,6 +43,22 @@ Your API token should have permission to:
 - deploy Workers
 - create/read/write D1 resources
 
+`CLOUDFLARE_ACCOUNT_ID` must be the **Cloudflare Account ID**, not a Zone ID.
+
+Common ways to find the correct Account ID:
+
+- In Cloudflare Dashboard, open the target account and copy the **Account ID** shown in the sidebar.
+- Or copy it from the browser URL when you are inside that account:
+  `https://dash.cloudflare.com/<ACCOUNT_ID>/...`
+
+If GitHub Actions reports an error like:
+
+```text
+Could not route to /client/v4/accounts/.../d1/database
+```
+
+that usually means the `CLOUDFLARE_ACCOUNT_ID` secret is wrong.
+
 ### 3. Optional repository variables
 
 You can also add these **repository variables** if you want custom names:

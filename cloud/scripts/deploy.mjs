@@ -80,6 +80,32 @@ function getOptionalEnv(name, fallbackValue) {
   return value || fallbackValue;
 }
 
+const ACCOUNT_ID_PATTERN = /^[a-f0-9]{32}$/i;
+
+function isLikelyAccountId(value) {
+  return ACCOUNT_ID_PATTERN.test(value || "");
+}
+
+function formatAccessibleAccounts(accounts) {
+  return accounts
+    .map((account) => `- ${account.name} (${account.id})`)
+    .join("\n");
+}
+
+async function tryListAccessibleAccounts(token) {
+  try {
+    const memberships = await callCloudflareApi("/memberships?per_page=100", {
+      token
+    });
+
+    return memberships
+      .map((membership) => membership?.account)
+      .filter((account) => account?.id && account?.name);
+  } catch {
+    return [];
+  }
+}
+
 async function callCloudflareApi(apiPath, { method = "GET", body, token }) {
   const response = await fetch(`${CLOUDFLARE_API_BASE}${apiPath}`, {
     method,
@@ -180,6 +206,47 @@ async function runWrangler(args) {
   await runCommand(npxCommand, ["wrangler", ...args], CLOUD_DIR);
 }
 
+async function enrichAccountIdError(error, accountId, token) {
+  const originalMessage = error instanceof Error ? error.message : String(error);
+  const looksLikeInvalidAccount =
+    originalMessage.includes("/client/v4/accounts/") ||
+    /object identifier is invalid/i.test(originalMessage) ||
+    /could not route/i.test(originalMessage);
+
+  if (!looksLikeInvalidAccount) {
+    return error instanceof Error ? error : new Error(originalMessage);
+  }
+
+  const messageParts = [
+    originalMessage,
+    "",
+    "CLOUDFLARE_ACCOUNT_ID 很可能填写错了。它必须是 Cloudflare Account ID，而不是 Zone ID、邮箱、用户名或别的资源 ID。"
+  ];
+
+  if (!isLikelyAccountId(accountId)) {
+    messageParts.push(`当前值 \"${accountId}\" 不是典型的 32 位十六进制 Account ID。`);
+  }
+
+  const accessibleAccounts = await tryListAccessibleAccounts(token);
+  if (accessibleAccounts.length > 0) {
+    messageParts.push(
+      "",
+      "当前 API Token 可访问的 Cloudflare 账户如下：",
+      formatAccessibleAccounts(accessibleAccounts),
+      "",
+      "请把正确的 account.id 填到 GitHub Secret `CLOUDFLARE_ACCOUNT_ID`。"
+    );
+  } else {
+    messageParts.push(
+      "",
+      "如果当前 Token 没有 Memberships Read 权限，脚本无法自动列出账号。",
+      "请到 Cloudflare Dashboard 查看右侧栏的 Account ID，或从浏览器地址栏 `https://dash.cloudflare.com/<ACCOUNT_ID>/...` 中复制。"
+    );
+  }
+
+  return new Error(messageParts.join("\n"));
+}
+
 async function main() {
   if (process.argv.includes("--help") || process.argv.includes("-h")) {
     console.log(HELP_TEXT);
@@ -197,18 +264,26 @@ async function main() {
   console.log(`→ Using Cloudflare account: ${accountId}`);
   console.log(`→ Environment file: ${path.relative(CLOUD_DIR, ENV_FILE_PATH)}`);
 
-  const database = await ensureD1Database(accountId, apiToken, databaseName);
-  const configPath = await generateWranglerConfig(database.name, database.uuid);
+  if (!isLikelyAccountId(accountId)) {
+    console.warn("⚠️ CLOUDFLARE_ACCOUNT_ID does not look like a 32-character Cloudflare account id.");
+  }
 
-  console.log(`→ Generated Wrangler config: ${path.relative(CLOUD_DIR, configPath)}`);
-  console.log(`→ Applying migration: ${path.relative(CLOUD_DIR, MIGRATION_PATH)}`);
-  await runWrangler(["d1", "execute", database.name, "--remote", `--file=${MIGRATION_PATH}`, "--config", configPath]);
+  try {
+    const database = await ensureD1Database(accountId, apiToken, databaseName);
+    const configPath = await generateWranglerConfig(database.name, database.uuid);
 
-  console.log("→ Deploying Worker...");
-  await runWrangler(["deploy", "--name", workerName, "--config", configPath]);
+    console.log(`→ Generated Wrangler config: ${path.relative(CLOUD_DIR, configPath)}`);
+    console.log(`→ Applying migration: ${path.relative(CLOUD_DIR, MIGRATION_PATH)}`);
+    await runWrangler(["d1", "execute", database.name, "--remote", `--file=${MIGRATION_PATH}`, "--config", configPath]);
 
-  console.log("✅ Cloudflare Worker deployment completed.");
-  console.log("Next step: copy the workers.dev URL printed by Wrangler into 9Router Dashboard → Endpoint → Setup Cloud.");
+    console.log("→ Deploying Worker...");
+    await runWrangler(["deploy", "--name", workerName, "--config", configPath]);
+
+    console.log("✅ Cloudflare Worker deployment completed.");
+    console.log("Next step: copy the workers.dev URL printed by Wrangler into 9Router Dashboard → Endpoint → Setup Cloud.");
+  } catch (error) {
+    throw await enrichAccountIdError(error, accountId, apiToken);
+  }
 }
 
 main().catch((error) => {
