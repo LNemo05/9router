@@ -1,3 +1,4 @@
 .wrangler/*
+.wrangler.generated.toml
 node_modules/*
 **node_modules/*
