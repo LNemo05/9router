@@ -5,6 +5,7 @@ compatibility_flags = ["nodejs_compat"]
 
 [alias]
 "@/lib/usageDb.js" = "./src/stubs/usageDb.js"
+"uuid" = "./node_modules/uuid/dist-node/index.js"
 
 # The deploy script appends the D1 binding to a generated config file at runtime.
 # This checked-in config stays account-agnostic, so you only need

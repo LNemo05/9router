@@ -10,7 +10,8 @@
     "deploy:help": "node ./scripts/deploy.mjs --help"
   },
   "dependencies": {
-    "open-sse": "file:../open-sse"
+    "open-sse": "file:../open-sse",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "wrangler": "^3.0.0"
